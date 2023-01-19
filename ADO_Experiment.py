@@ -5,7 +5,7 @@ import numpy as np
 from numpy.lib.function_base import median
 import scipy.stats
 
-eps = 1e-100  # this is used to avoid log(0)
+eps = 1e-100  # used to avoid log(0)
 
 class Experiment:
 
@@ -16,8 +16,8 @@ class Experiment:
         n = self.n
         minSize = 1/(k - 1)
         v = [i*minSize for i in range(math.ceil(1/minSize)+1)]
-        v[0] = 0.01
-        v[-1] = 0.99
+        v[0] = eps
+        v[-1] = 1 - eps
        
         p = np.zeros((n,k)) 
         x = np.ones(k)
@@ -48,9 +48,9 @@ class Experiment:
         self.n = n
         self.values = np.array(v)
         self.mat, self.invmat = self.calcFullFactorMatrices()
-        self.initialEntropy = (np.log2(self.m/self.hperpoint) * self.p).sum()
-        
+        self.initialEntropy = np.sum(np.log2(1/self.p) * self.p)
 
+        
     def normalize(v):
         sum = v.sum()
         if sum == 0:
@@ -64,7 +64,6 @@ class Experiment:
     def reset(self): # reset the likelihood values considering all monotonic curves equally probable
         self.p = self.factor * self.ffactor
         self.p = self.p / self.p.sum(axis=1)[:,None]
-        # self.p = np.ones((self.n,self.k))/self.k 
 
         self.mat, self.invmat = self.calcFullFactorMatrices()
     
@@ -74,7 +73,6 @@ class Experiment:
         self.invmat = invmat.copy()
         
     def set_prior(self,p): # if you give a p matrix, this function calculates the corresponding M matrices
-        ab_n = 400
         k = self.k
         n = self.n
         
@@ -88,13 +86,13 @@ class Experiment:
                         v[j] = values_points[i]
                 # print(v)
                 self.bayesUpdate(a,v)
-
-        
+        self.initialEntropy = np.sum(np.log2(1/self.p) * self.p)
+      
     def generate(self, n, k): # it generates all the Experiment parameters using n desings and k likelihoods
         minSize = 1/(k - 1)
         v = [i*minSize for i in range(math.ceil(1/minSize)+1)]
-        v[0] = 0.01
-        v[-1] = 0.99
+        v[0] = eps
+        v[-1] = 1 - eps
        
         p = np.zeros((n,k)) 
         x = np.ones(k)
@@ -132,22 +130,27 @@ class Experiment:
         self.p[amount] *= v
         self.p[amount] /= self.p[amount].sum()
         v = self.p[amount]/aux # used in forwad propagation
-        v[aux<eps]=0
+        v[aux<eps]=eps
         vv = v # used in backward propagation
 
         for i in range(amount + 1, self.n):
             aux = self.p[i].copy()
             self.mat[i-1] *= v[np.newaxis, :].T
             self.p[i] = self.mat[i-1].sum(axis = 0)
+            self.p[i] /= self.p[i].sum()
             v = self.p[i]/aux
-            v[aux<eps]=0
+            v[aux<eps]=eps
 
         for i in range(amount-1, -1, -1):
             aux = self.p[i].copy()
             self.mat[i] *= vv
             self.p[i] = self.mat[i].sum(axis = 1)
+            self.p[i] /= self.p[i].sum() 
             vv = self.p[i]/aux
-            vv[aux<eps]=0
+            vv[aux<eps]=eps
+            
+        self.p[self.p<eps] = eps 
+        self.mat[self.mat<eps] = eps
 
     def update(self, amount, result):
         v = self.values
@@ -206,7 +209,7 @@ class Experiment:
             aux = aux[0]
             groundtruth[i] = aux
         
-        aux = random.choices(np.arange(aux, self.k,1), weights=self.mat[i].sum(axis =1)[aux:self.k])
+        aux = random.choices(np.arange(aux, self.k,1), weights=self.mat[i].sum(axis =0)[aux:self.k]) # modificado
         aux = aux[0]
         groundtruth[i + 1] = aux
         
@@ -236,11 +239,14 @@ class Experiment:
             vv = p[i]/aux
             vv[aux<eps]=0
         
+        p[p<eps] = eps
         return p
     
     
     def CalcExpectedGainAll(self): # calculate the expected gain at each design point
         gain = np.zeros(self.n)
+        infoG1 = np.zeros(self.n)
+        infoG0 = np.zeros(self.n)
         p1 = self.createPredictor()
         p0 = 1-p1
         for i in range(self.n):
@@ -250,14 +256,21 @@ class Experiment:
             info0 = self.bayesCalcExpectedGainAll(i, v)
     
             info1 = np.log2(info1/self.p)*info1
-            info1[self.p<eps] = 0
+            # info1[self.p<eps] = 0
             info1 = info1.sum()
             
             info0 = np.log2(info0/self.p)*info0
-            info0[self.p<eps] = 0
+            # info0[self.p<eps] = 0
             info0 = info0.sum()
+            
+            infoG1[i] = info1
+            infoG0[i] = info0
         
             gain[i] = p1[i]*info1 + p0[i]*info0
+            
+        self.infoG1 = infoG1 
+        self.infoG0 = infoG0 
+
         
         return gain
     
@@ -268,3 +281,15 @@ class Experiment:
     def RANDchoose(self): # choses a random design value
         a = random.randint(0,self.n-1)
         return a
+    
+
+    def infoGained(self):
+        bits = np.log2(1/self.p) * self.p
+        bits[self.p<eps] = 0
+        bits = np.sum(bits)
+        bits = self.initialEntropy - bits
+        
+        return bits
+
+    def infoProgress(self):
+        return self.infoGained() / self.initialEntropy
