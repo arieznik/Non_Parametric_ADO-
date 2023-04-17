@@ -20,7 +20,7 @@ exp.generate(n,k) # generate the bins priors considering all monotonic curves eq
 aux = np.linspace(0, expan, n) # design points
 
 prior = Prior() 
-p = prior.set_prior_exp(expan,n,k) # calcualte the prior exponential curves, shown in Figure 1b
+p = prior.set_prior_exp(expan,n,k) # calcualte the prior based on exponential curves, shown in Figure 1b
 exp.set_prior(p) # set the bins priors as the one calculated above 
 
 p_prior = exp.p.copy() 
