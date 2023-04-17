@@ -1,54 +1,47 @@
-from ast import ExtSlice
 import math
 import random   
 import numpy as np
-from numpy.lib.function_base import median
-import scipy.stats
 
 eps = 1e-100  # used to avoid log(0)
 
 class Experiment:
 
     def __init__(self):
-        self.n = 10
-        self.k = 10
+        self.n = 10 # number of design points
+        self.k = 10 # number of likelihood points
         k = self.k
         n = self.n
         minSize = 1/(k - 1)
-        v = [i*minSize for i in range(math.ceil(1/minSize)+1)]
-        v[0] = eps
+        v = [i*minSize for i in range(math.ceil(1/minSize)+1)] # likelihood values (v_i in the manuscript)
+        v[0] = eps # to avoid log(0)
         v[-1] = 1 - eps
        
-        p = np.zeros((n,k)) 
-        x = np.ones(k)
-        xx = np.zeros((k,k))
-        tri = np.triu(np.ones((k,k)))
+        p = np.zeros((n,k)) # this is the array G in the pseudo-code in figure 3
+        x = np.ones(k) # this is the vector V in the pseudo-code in figure 3
+        tri = np.triu(np.ones((k,k))) # this is the H matrix in figure 3
 
-        for i in range(n):
+        for i in range(n): # this is the for loop in figure 3
             p[i] = x
             x = x @ tri
 
         self.factor = p
-        self.ffactor = np.flip(p)
+        self.ffactor = np.flip(p) # array J in figure 3
 
         p = self.ffactor * p # numbers of models passing by each point n,k
-        self.modelsperpointlast = p[n-1]
 
         # total models
 
-        self.m = p[n-1].sum()
+        self.m = p[n-1].sum() # total number of models
                 
-        # normalize
-        p = p / p.sum(axis=1)[:,None]
-        
+        # calculate the bins priors at each design and likelihood point if all models are equally probable
+        p = p / p.sum(axis=1)[:,None] 
 
-        self.p = p
-        self.hperpoint = p * self.m
+        self.p = p # BINS PRIORS
         self.k = k
         self.n = n
-        self.values = np.array(v)
-        self.mat, self.invmat = self.calcFullFactorMatrices()
-        self.initialEntropy = np.sum(np.log2(1/self.p) * self.p)
+        self.values = np.array(v) # likelihood points
+        self.mat, self.invmat = self.calcFullFactorMatrices() # calculate the M matrices and store them in self.mat
+        self.initialEntropy = np.sum(np.log2(1/self.p) * self.p) #initial entropy
 
         
     def normalize(v):
@@ -61,22 +54,24 @@ class Experiment:
     def createPredictor(self): # calculate marginal probabilty for 1
         return self.p @ self.values
 
-    def reset(self): # reset the likelihood values considering all monotonic curves equally probable
+    def reset(self): # reset the bins priors values considering all monotonic curves equally probable
         self.p = self.factor * self.ffactor
         self.p = self.p / self.p.sum(axis=1)[:,None]
 
         self.mat, self.invmat = self.calcFullFactorMatrices()
     
-    def set_prior_mat(self, p, mat, invmat): # if you saved the p and M matrix use this function
+    def set_prior_mat(self, p, mat, invmat): # if you saved the p and M matrices use this function
         self.p = p.copy()
         self.mat = mat.copy()
         self.invmat = invmat.copy()
         
-    def set_prior(self,p): # if you give a p matrix, this function calculates the corresponding M matrices
+    # if you give a p prior matrix, this function finds M matrices compatible with it
+    # here we implement what it is mentioned in the section "Setting arbitrary priors"  
+    def set_prior(self,p):
         k = self.k
         n = self.n
         
-        ind_points = 1000
+        ind_points = 1000 # this number is arbitrary and it may be changed if convergence is not achieved
         values_points = np.linspace(0.8, 0.99, ind_points)
         for i in range(ind_points):
             for a in range(n):
@@ -90,58 +85,59 @@ class Experiment:
       
     def generate(self, n, k): # it generates all the Experiment parameters using n desings and k likelihoods
         minSize = 1/(k - 1)
-        v = [i*minSize for i in range(math.ceil(1/minSize)+1)]
-        v[0] = eps
+        v = [i*minSize for i in range(math.ceil(1/minSize)+1)] # likelihood values (v_i in the manuscript)
+        v[0] = eps # to avoid log(0)
         v[-1] = 1 - eps
        
-        p = np.zeros((n,k)) 
-        x = np.ones(k)
-        xx = np.zeros((k,k))
-        tri = np.triu(np.ones((k,k)))
+        p = np.zeros((n,k)) # this is the array G in the pseudo-code in figure 3
+        x = np.ones(k) # this is the vector V in the pseudo-code in figure 3
+        tri = np.triu(np.ones((k,k))) # this is the H matrix in figure 3
 
-        for i in range(n):
+        for i in range(n): # this is the for loop in figure 3
             p[i] = x
             x = x @ tri
 
         self.factor = p
-        self.ffactor = np.flip(p)
+        self.ffactor = np.flip(p) # array J in figure 3
 
         p = self.ffactor * p # numbers of models passing by each point n,k
-        self.modelsperpointlast = p[n-1]
 
         # total models
 
         self.m = p[n-1].sum()
                 
-        # normalize
+        # calculate the bins priors at each design and likelihood point if all models are equally probable
         p = p / p.sum(axis=1)[:,None]
         
-
-        self.p = p
+        self.p = p # BINS PRIORS
         self.hperpoint = p * self.m
         self.k = k
         self.n = n
-        self.values = np.array(v)
-        self.mat, self.invmat = self.calcFullFactorMatrices()
-        self.initialEntropy = (np.log2(self.m/self.hperpoint) * self.p).sum()
+        self.values = np.array(v) # likelihood points
+        self.mat, self.invmat = self.calcFullFactorMatrices() # calculate the M matrices and store them in self.mat
+        self.initialEntropy = (np.log2(self.m/self.hperpoint) * self.p).sum() #initial entropy
         
-    def bayesUpdate(self, amount, v):
-        aux = self.p[amount].copy() 
-        self.p[amount] *= v
-        self.p[amount] /= self.p[amount].sum()
-        v = self.p[amount]/aux # used in forwad propagation
+    # updated the bins priors and M matrices based on the likelihoods of the result (v) at the given design point
+    # here we implement the algorithm explained in the section "Bayesian update for discrete priors"
+    def bayesUpdate(self, design, v):
+        aux = self.p[design].copy() 
+        self.p[design] *= v
+        self.p[design] /= self.p[design].sum()
+        v = self.p[design]/aux # used in forwad propagation
         v[aux<eps]=eps
         vv = v # used in backward propagation
-
-        for i in range(amount + 1, self.n):
+        
+        # update bins priors at desing point to the right of the design point where the measurement was performed 
+        for i in range(design + 1, self.n):
             aux = self.p[i].copy()
             self.mat[i-1] *= v[np.newaxis, :].T
             self.p[i] = self.mat[i-1].sum(axis = 0)
             self.p[i] /= self.p[i].sum()
             v = self.p[i]/aux
             v[aux<eps]=eps
-
-        for i in range(amount-1, -1, -1):
+            
+        # update bins priors at desing point to the left of the design point where the measurement was performed 
+        for i in range(design-1, -1, -1):
             aux = self.p[i].copy()
             self.mat[i] *= vv
             self.p[i] = self.mat[i].sum(axis = 1)
@@ -149,17 +145,19 @@ class Experiment:
             vv = self.p[i]/aux
             vv[aux<eps]=eps
             
-        self.p[self.p<eps] = eps 
-        self.mat[self.mat<eps] = eps
-
-    def update(self, amount, result):
+        self.p[self.p<eps] = eps # to avoid log(0)
+        self.mat[self.mat<eps] = eps # to avoid log(0)
+        
+    # update function. it establishes the likelihood of the result and 
+    # calls the function to update the bins priors based on these likelihoods    
+    def update(self, design, result): 
         v = self.values
         if result == 0:
             v = 1-v
 
-        self.bayesUpdate(amount, v)
+        self.bayesUpdate(design, v)
         
-        
+    # calculate the M matrices     
     def calcFullFactorMatrices(self):
         mat = []
         invmat = []
@@ -200,8 +198,9 @@ class Experiment:
             center = (self.factor[dx-1, dy]) 
 
         return self.factor[x0,y0] * center * self.ffactor[x1,y1]
-        
-    def getRandomModel(self): # it takes a random model from the p and M matrices
+    
+    # take a random model from the p and M matrices    
+    def getRandomModel(self): 
         groundtruth = np.zeros(self.n)
         aux = 0
         for i in range(0,self.n - 1):
@@ -214,39 +213,41 @@ class Experiment:
         groundtruth[i + 1] = aux
         
         return groundtruth
-   
-    def bayesCalcExpectedGainAll(self, amount, v): # calculate the expected info gain at a given design value       
-        aux = self.p[amount].copy()
+    
+   # calculate the bins prior that would result from 
+   # a given result witt likelihood v at a given design point 
+    def bayesCalcExpectedGainAll(self, design, v):        
+        aux = self.p[design].copy()
         p = self.p.copy()
         mat = self.mat.copy()
-        p[amount] *= v
-        p[amount] /= p[amount].sum()
-        v = p[amount]/aux # used in forwad propagation
+        p[design] *= v
+        p[design] /= p[design].sum()
+        v = p[design]/aux # used in forwad propagation
         v[aux<eps]=0
         vv = v # used in backward propagation
 
-        for i in range(amount + 1, self.n):
+        for i in range(design + 1, self.n):
             aux = self.p[i].copy()
             mat[i-1] *= v[np.newaxis, :].T
             p[i] = mat[i-1].sum(axis = 0)
             v = p[i]/aux
             v[aux<eps]=0
 
-        for i in range(amount-1, -1, -1):
+        for i in range(design-1, -1, -1):
             aux = self.p[i].copy()
             mat[i] *= vv
             p[i] = mat[i].sum(axis = 1)
             vv = p[i]/aux
             vv[aux<eps]=0
         
-        p[p<eps] = eps
+        p[p<eps] = eps # to avoid log(0)
         return p
     
-    
-    def CalcExpectedGainAll(self): # calculate the expected gain at each design point
+    # # calculate the expected gain at each design point
+    def CalcExpectedGainAll(self): 
         gain = np.zeros(self.n)
-        infoG1 = np.zeros(self.n)
-        infoG0 = np.zeros(self.n)
+        infoG1 = np.zeros(self.n) # to store info gained at each design if the result is 1
+        infoG0 = np.zeros(self.n) # to store info gained at each design if the resul is 0 
         p1 = self.createPredictor()
         p0 = 1-p1
         for i in range(self.n):
@@ -266,7 +267,7 @@ class Experiment:
             infoG1[i] = info1
             infoG0[i] = info0
         
-            gain[i] = p1[i]*info1 + p0[i]*info0
+            gain[i] = p1[i]*info1 + p0[i]*info0 # expected info gain at each design
             
         self.infoG1 = infoG1 
         self.infoG0 = infoG0 
@@ -274,15 +275,17 @@ class Experiment:
         
         return gain
     
-    def ADOchoose(self): # choses the design wich maximizes the expected gain
+    # chose the design that maximizes the expected gain
+    def ADOchoose(self): 
         a =  np.argmax(self.CalcExpectedGainAll())
         return a
     
-    def RANDchoose(self): # choses a random design value
+    # chose a random design value
+    def RANDchoose(self): 
         a = random.randint(0,self.n-1)
         return a
     
-
+    # calculate the info gained in relation to the prior
     def infoGained(self):
         bits = np.log2(1/self.p) * self.p
         bits[self.p<eps] = 0
@@ -290,6 +293,7 @@ class Experiment:
         bits = self.initialEntropy - bits
         
         return bits
-
+    
+    # calculate the normalized info gain
     def infoProgress(self):
         return self.infoGained() / self.initialEntropy
