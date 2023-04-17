@@ -1,29 +1,23 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Sun Sep 19 09:30:32 2021
-
-@author: test
-"""
-from ast import ExtSlice
 import math
 import random   
 import numpy as np
-from numpy.lib.function_base import median
 import scipy.stats
-# from model2 import *
 import random
+
+# this files defines a class called Prior that you can use to create 
+# priors based on exponential, power law, quadratic, logistic or gaussian models
 
 class Prior:
     def __init__(self):
         self.n = 10
         self.k = 10
 
-    def set_prior_exp(self,expan,n,k):
+    def set_prior_exp(self,expan,n,k): # create a prior based on exponential curves
         self.k = k
         self.n = n
         p = np.zeros((n,k))
-        ab_n = 400 # this  numeber is arbitrary and based on convergence test we did 
-        # using n =10 and k =100. If you increase these number be sure you achieved convergence
+        ab_n = 400 # this  number is arbitrary and based on convergence test we did 
+        # using n =10 and k =100. If you increase these numbers be sure you achieved convergence
         aux = np.linspace(0, expan, n)
         
         a_grid = np.linspace(0, 1, ab_n)
@@ -44,7 +38,7 @@ class Prior:
         return p
     
     
-    def set_prior_pow(self,expan,n,k):
+    def set_prior_pow(self,expan,n,k): # create a prior based on power law curves
         self.k = k
         self.n = n
         p = np.zeros((n,k))
@@ -69,7 +63,7 @@ class Prior:
         
         return p      
 
-    def set_prior_logis(self,expan,n,k):
+    def set_prior_logis(self,expan,n,k): # create a prior based on logistic curves
         self.k = k
         self.n = n
         p = np.zeros((n,k))
@@ -86,7 +80,7 @@ class Prior:
         return p  
     
     
-    def set_prior_cuadra(self,expan,n,k):
+    def set_prior_cuadra(self,expan,n,k): # create a prior based on quadratic curves
         self.k = k
         self.n = n
         p = np.zeros((n,k))
@@ -105,7 +99,7 @@ class Prior:
         return p  
     
     
-    def set_prior_gauss(self,expan,n,k):
+    def set_prior_gauss(self,expan,n,k): # create a prior based gaussian distributions at each design point
         p = np.zeros((n,k))
         aux = np.linspace(0, expan, n)
         means = (k/2) * (1 - aux/800)
